@@ -27,7 +27,7 @@ def count_occupied_rooms(stays_df, target_date, room_type):
 
 # Example usage
 room_type = 'Single'  # Change as needed
-target_date = '2021-08-22'  # Change as needed
+target_date = '2021-08-27'  # Change as needed
 occupied_rooms = count_occupied_rooms(hotel_stays, target_date, room_type)
 
 print(f"Number of occupied '{room_type}' rooms on {target_date}: {occupied_rooms}")

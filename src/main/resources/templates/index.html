@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Hotel Price Prediction</title>
+    <script>
+        function fetchRoomTypes() {
+            fetch('/roomTypes')
+                .then(response => response.json())
+                .then(data => {
+                    let select = document.getElementById("roomType");
+                    select.innerHTML = "";
+                    let roomInputs = document.getElementById("roomInputs");
+                    roomInputs.innerHTML = ""; // Clear previous inputs
+                    data.forEach(type => {
+                        let option = document.createElement("option");
+                        option.value = type;
+                        option.text = type;
+                        select.add(option);
+
+                        // Create input fields for each room type
+                        let inputDiv = document.createElement("div");
+                        inputDiv.classList.add("room-input");
+                        inputDiv.innerHTML = `<label for="totalRooms${type}">Total Rooms for ${type}:</label>
+                                              <input type="number" id="totalRooms${type}" name="${type}" required>`;
+                        roomInputs.appendChild(inputDiv);
+                    });
+                    document.getElementById("roomTypeMessage").innerText = "Room types successfully retrieved, please make your selection.";
+                    document.getElementById("totalRoomsForm").style.display = "block";
+                })
+                .catch(error => {
+                    document.getElementById("message").innerText = "Error fetching room types.";
+                    console.error('Error fetching room types:', error);
+                });
+        }
+
+        function uploadCSV() {
+            document.getElementById("message").innerText = "Dataset uploading....";
+            let formData = new FormData();
+            formData.append("file", document.getElementById("file").files[0]);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.text())
+                .then(data => {
+                    document.getElementById("message").innerText = data;
+                    checkUploadStatus();
+                })
+                .catch(error => {
+                    document.getElementById("message").innerText = "Error uploading dataset.";
+                    console.error('Error uploading dataset:', error);
+                });
+        }
+
+        function checkUploadStatus() {
+            let interval = setInterval(() => {
+                fetch('/uploadStatus')
+                    .then(response => response.text())
+                    .then(status => {
+                        if (status === "Processed") {
+                            clearInterval(interval);
+                            document.getElementById("message").innerText = "Dataset uploaded successfully.";
+                            fetchRoomTypes();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error checking upload status:', error);
+                    });
+            }, 2000); // Check every 2 seconds
+        }
+
+        function setTotalRooms() {
+            let formData = new FormData(document.getElementById("totalRoomsForm"));
+            fetch('/setTotalRooms', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.text())
+                .then(data => {
+                    document.getElementById("totalRoomsMessage").innerText = data;
+                    if (data.includes("successfully")) {
+                        document.getElementById("predictForm").style.display = "block";
+                    }
+                })
+                .catch(error => {
+                    document.getElementById("totalRoomsMessage").innerText = "Error setting total rooms.";
+                    console.error('Error setting total rooms:', error);
+                });
+        }
+
+        function predictPrice() {
+            let form = document.getElementById("predictForm");
+            let formData = new FormData(form);
+
+            fetch('/predict', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json())
+                .then(data => {
+                    let results = document.getElementById("results");
+                    results.innerHTML = "";
+                    data.forEach(price => {
+                        let p = document.createElement("p");
+                        p.innerText = "Predicted Price: " + price;
+                        results.appendChild(p);
+                    });
+                })
+                .catch(error => {
+                    document.getElementById("results").innerText = "Error predicting prices.";
+                    console.error('Error predicting prices:', error);
+                });
+        }
+
+        window.onload = function() {
+            document.getElementById("totalRoomsForm").style.display = "none";
+            document.getElementById("predictForm").style.display = "none";
+        }
+    </script>
+</head>
+<body>
+<h1>Hotel Price Prediction</h1>
+
+<div id="message"></div>
+
+<form id="uploadForm" onsubmit="event.preventDefault(); uploadCSV();">
+    <label for="file">Upload CSV:</label>
+    <input type="file" id="file" name="file" required>
+    <button type="submit">Upload</button>
+</form>
+
+<div id="totalRoomsMessage"></div>
+
+<form id="totalRoomsForm" onsubmit="event.preventDefault(); setTotalRooms();">
+    <div id="roomTypeMessage"></div>
+    <div id="roomInputs"></div>
+    <button type="submit">Set Total Rooms</button>
+</form>
+
+<form id="predictForm" onsubmit="event.preventDefault(); predictPrice();">
+    <label for="startDate">Start Date:</label>
+    <input type="date" id="startDate" name="startDate" required>
+    <label for="endDate">End Date:</label>
+    <input type="date" id="endDate" name="endDate" required>
+    <label for="roomType">Room Type:</label>
+    <select id="roomType" name="roomType" required></select>
+    <label for="persons">Persons:</label>
+    <input type="number" id="persons" name="persons" required>
+    <label for="occupancyRate">Occupancy Rate:</label>
+    <input type="number" step="0.01" id="occupancyRate" name="occupancyRate" required>
+    <button type="submit">Predict</button>
+</form>
+
+<div id="results"></div>
+
+<div id="predictionAlgorithmExplanation">
+    <h2>Prediction Algorithm Explanation</h2>
+    <p>
+        The prediction algorithm uses a Random Forest approach to analyze historical stay data and predict future prices.
+        It considers factors such as the season, room type, number of guests, and expected occupancy rate. The prices are
+        adjusted for inflation and demand, ensuring an accurate forecast for each day within the selected period.
+    </p>
+</div>
+</body>
+</html>
