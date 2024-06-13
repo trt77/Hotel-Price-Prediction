@@ -11,10 +11,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.time.LocalDate;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -28,7 +28,7 @@ public class PredictionController {
     private final AsyncCSVService asyncCSVService;
 
     @Autowired
-    public PredictionController(PredictionService predictionService,AsyncCSVService asyncCSVService) {
+    public PredictionController(PredictionService predictionService, AsyncCSVService asyncCSVService) {
         this.asyncCSVService = asyncCSVService;
         this.predictionService = predictionService;
     }
@@ -40,19 +40,21 @@ public class PredictionController {
 
     @PostMapping("/upload")
     @ResponseBody
-    public String uploadCSV(@RequestParam("file") MultipartFile file) {
+    public CompletableFuture<String> uploadCSV(@RequestParam("file") MultipartFile file) {
         if (file.isEmpty()) {
-            return "Please select a CSV file to upload.";
+            return CompletableFuture.completedFuture("Please select a CSV file to upload.");
         }
 
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
-            List<String> lines = br.lines().collect(Collectors.toList());
-            asyncCSVService.uploadCSVAsync(lines);
-            return "Dataset uploading....";
-        } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Error processing CSV file", e);
-            return "An error occurred while processing the CSV file.";
-        }
+        return CompletableFuture.supplyAsync(() -> {
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
+                List<String> lines = br.lines().collect(Collectors.toList());
+                asyncCSVService.uploadCSVAsync(lines);
+                return "Dataset uploading....";
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Error processing CSV file", e);
+                return "An error occurred while processing the CSV file.";
+            }
+        });
     }
 
     @GetMapping("/uploadStatus")
@@ -67,40 +69,53 @@ public class PredictionController {
 
     @PostMapping("/setTotalRooms")
     @ResponseBody
-    public String setTotalRooms(@RequestParam Map<String, String> totalRoomsByType) {
-        try {
-            Map<String, Integer> totalRooms = totalRoomsByType.entrySet().stream()
-                    .collect(Collectors.toMap(Map.Entry::getKey, entry -> Integer.parseInt(entry.getValue())));
-            predictionService.setTotalRoomsByType(totalRooms);
-            return "Total rooms set successfully.";
-        } catch (NumberFormatException e) {
-            LOGGER.log(Level.SEVERE, "Error parsing total rooms", e);
-            return "An error occurred while setting total rooms.";
-        }
+    public CompletableFuture<String> setTotalRooms(@RequestParam Map<String, String> totalRoomsByType) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Map<String, Integer> totalRooms = totalRoomsByType.entrySet().stream()
+                        .collect(Collectors.toMap(Map.Entry::getKey, entry -> Integer.parseInt(entry.getValue())));
+                predictionService.setTotalRoomsByType(totalRooms);
+                return "Total rooms set successfully.";
+            } catch (NumberFormatException e) {
+                LOGGER.log(Level.SEVERE, "Error parsing total rooms", e);
+                return "An error occurred while setting total rooms.";
+            }
+        });
     }
+
+    private volatile boolean isPredicting = false;
 
     @PostMapping("/predict")
     @ResponseBody
-    public List<Double> predictPrice(@RequestParam("startDate") String startDate,
-                                     @RequestParam("endDate") String endDate,
-                                     @RequestParam("roomType") String roomType,
-                                     @RequestParam("persons") int persons,
-                                     @RequestParam("occupancyRate") double occupancyRate) {
-        try {
-            LOGGER.info("Predicting prices from " + startDate + " to " + endDate + " for room type " + roomType);
-            List<Double> predictedPrices = predictionService.predictPrice(LocalDate.parse(startDate), LocalDate.parse(endDate), roomType, persons, occupancyRate);
-            LOGGER.info("Prediction completed: " + predictedPrices);
-            return predictedPrices;
-        } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Error predicting price", e);
-            throw new RuntimeException("An error occurred while predicting the price.");
-        }
+    public CompletableFuture<List<Double>> predictPrice(@RequestParam("startDate") String startDate,
+                                                        @RequestParam("endDate") String endDate,
+                                                        @RequestParam("roomType") String roomType,
+                                                        @RequestParam("persons") int persons,
+                                                        @RequestParam("occupancyRate") double occupancyRate) {
+        isPredicting = true;
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                List<Double> predictedPrices = predictionService.predictPrice(LocalDate.parse(startDate), LocalDate.parse(endDate), roomType, persons, occupancyRate);
+                return predictedPrices;
+            } catch (Exception e) {
+                throw new RuntimeException("An error occurred while predicting the price.", e);
+            } finally {
+                isPredicting = false;
+            }
+        });
+    }
+
+    @GetMapping("/predictStatus")
+    @ResponseBody
+    public boolean getPredictStatus() {
+        return isPredicting;
     }
 
     @GetMapping("/roomTypes")
     @ResponseBody
-    public Set<String> getRoomTypes() {
+    public CompletableFuture<Set<String>> getRoomTypes() {
         LOGGER.info("Fetching room types");
-        return predictionService.getRoomTypes();
+        return CompletableFuture.supplyAsync(() -> predictionService.getRoomTypes());
     }
+
 }

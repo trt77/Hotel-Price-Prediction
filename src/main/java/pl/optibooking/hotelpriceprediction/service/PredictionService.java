@@ -5,7 +5,10 @@ import pl.optibooking.hotelpriceprediction.repository.StayDataRepository;
 import pl.optibooking.hotelpriceprediction.utils.RandomForestPricePrediction;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import weka.classifiers.trees.RandomForest;
+import weka.core.SerializationHelper;
 
+import java.io.File;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -26,15 +29,14 @@ public class PredictionService {
 
     private Set<String> roomTypes = new HashSet<>();
     private Map<String, Integer> totalRoomsByType = new HashMap<>();
+    private RandomForest model;
+    private static final String MODEL_PATH = "hotel_price_model.model";
 
-    // Metoda do przetwarzania CSV i zapisywania danych do bazy
     public void uploadCSV(List<String> lines) {
         try {
-            // Pomijamy nagłówek
             if (!lines.isEmpty()) {
                 lines.remove(0);
             }
-            // Przetwarzamy linie danych
             for (String line : lines) {
                 String[] values = line.split(",");
                 StayData stayData = new StayData();
@@ -52,15 +54,39 @@ public class PredictionService {
         }
     }
 
-    // Metoda do przewidywania cen
+    public RandomForest trainModel() {
+        List<StayData> stayDataList = stayDataRepository.findAll();
+        RandomForest model = RandomForestPricePrediction.train(stayDataList);
+        this.model = model;
+        try {
+            SerializationHelper.write(MODEL_PATH, model);
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error saving model", e);
+        }
+        return model;
+    }
+
     public List<Double> predictPrice(LocalDate startDate, LocalDate endDate, String roomType, int persons, double occupancyRate) {
+        if (model == null) {
+            try {
+                model = (RandomForest) SerializationHelper.read(MODEL_PATH);
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Error loading model", e);
+                throw new RuntimeException("Model not trained or found");
+            }
+        }
+
         int totalRooms = totalRoomsByType.getOrDefault(roomType, 0);
         LOGGER.info("Predicting prices for the period from " + startDate + " to " + endDate + " for room type " + roomType + " with total rooms " + totalRooms);
         List<StayData> stayDataList = stayDataRepository.findAll();
+        LOGGER.info("Total StayData entries: " + stayDataList.size());
+
         List<LocalDate> dates = startDate.datesUntil(endDate.plusDays(1)).collect(Collectors.toList());
+        LOGGER.info("Total dates for prediction: " + dates.size());
         List<Double> predictedPrices = dates.stream()
                 .map(date -> {
-                    double price = RandomForestPricePrediction.predict(stayDataList, date, date, roomType, persons, occupancyRate, totalRooms);
+                    LOGGER.info("Running prediction for date: " + date);
+                    double price = RandomForestPricePrediction.predict(model, stayDataList, date, date, roomType, persons, occupancyRate, totalRooms);
                     LOGGER.info("Predicted price for " + date + ": " + price);
                     return price;
                 })
@@ -69,13 +95,11 @@ public class PredictionService {
         return predictedPrices;
     }
 
-    // Metoda do zwracania dostępnych typów pokoi
     public Set<String> getRoomTypes() {
         LOGGER.info("Returning room types: " + roomTypes);
         return roomTypes;
     }
 
-    // Metoda do ustawiania liczby pokoi według typu
     public void setTotalRoomsByType(Map<String, Integer> totalRoomsByType) {
         this.totalRoomsByType = totalRoomsByType;
     }

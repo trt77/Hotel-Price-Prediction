@@ -17,8 +17,8 @@ public class StayData {
     private int persons;
     private String roomType;
     private double totalPrice;
-    private int occupiedRooms;  // Add this field
-    private int totalRooms;     // Add this field
+    private int occupiedRooms;
+    private int totalRooms;
 
     // Getters and Setters
 
