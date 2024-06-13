@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import weka.classifiers.trees.RandomForest;
 import weka.core.SerializationHelper;
 
-import java.io.File;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,15 +26,19 @@ public class PredictionService {
     @Autowired
     private StayDataRepository stayDataRepository;
 
-    private Set<String> roomTypes = new HashSet<>();
+    private final Set<String> roomTypes = new HashSet<>();
     private Map<String, Integer> totalRoomsByType = new HashMap<>();
-    private RandomForest model;
-    private static final String MODEL_PATH = "hotel_price_model.model";
+    private static RandomForest model;
+    public static final String MODEL_PATH;
+
+    static {
+        MODEL_PATH = "hotel_price_model.model";
+    }
 
     public void uploadCSV(List<String> lines) {
         try {
             if (!lines.isEmpty()) {
-                lines.remove(0);
+                lines.remove(0); // Remove header
             }
             for (String line : lines) {
                 String[] values = line.split(",");
@@ -45,8 +48,10 @@ public class PredictionService {
                 stayData.setPersons(Integer.parseInt(values[3]));
                 stayData.setRoomType(values[4]);
                 stayData.setTotalPrice(Double.parseDouble(values[5]));
+                // TotalRooms and OccupiedRooms are not in the CSV, calculate later
                 stayDataRepository.save(stayData);
                 roomTypes.add(values[4]);
+                LOGGER.info("Processed StayData: " + stayData);
             }
             LOGGER.info("CSV file processed successfully. Room types: " + roomTypes);
         } catch (Exception e) {
@@ -57,7 +62,7 @@ public class PredictionService {
     public RandomForest trainModel() {
         List<StayData> stayDataList = stayDataRepository.findAll();
         RandomForest model = RandomForestPricePrediction.train(stayDataList);
-        this.model = model;
+        PredictionService.model = model;
         try {
             SerializationHelper.write(MODEL_PATH, model);
         } catch (Exception e) {
@@ -76,17 +81,17 @@ public class PredictionService {
             }
         }
 
-        int totalRooms = totalRoomsByType.getOrDefault(roomType, 0);
-        LOGGER.info("Predicting prices for the period from " + startDate + " to " + endDate + " for room type " + roomType + " with total rooms " + totalRooms);
+        LOGGER.info("Predicting prices for the period from " + startDate + " to " + endDate + " for room type " + roomType + " with expected occupancy " + occupancyRate + "%");
         List<StayData> stayDataList = stayDataRepository.findAll();
         LOGGER.info("Total StayData entries: " + stayDataList.size());
 
         List<LocalDate> dates = startDate.datesUntil(endDate.plusDays(1)).collect(Collectors.toList());
         LOGGER.info("Total dates for prediction: " + dates.size());
+
         List<Double> predictedPrices = dates.stream()
                 .map(date -> {
                     LOGGER.info("Running prediction for date: " + date);
-                    double price = RandomForestPricePrediction.predict(model, stayDataList, date, date, roomType, persons, occupancyRate, totalRooms);
+                    double price = RandomForestPricePrediction.predict(model, stayDataList, date, roomType, persons, occupancyRate / 100.0, totalRoomsByType);
                     LOGGER.info("Predicted price for " + date + ": " + price);
                     return price;
                 })
@@ -95,6 +100,8 @@ public class PredictionService {
         return predictedPrices;
     }
 
+
+
     public Set<String> getRoomTypes() {
         LOGGER.info("Returning room types: " + roomTypes);
         return roomTypes;
@@ -102,5 +109,6 @@ public class PredictionService {
 
     public void setTotalRoomsByType(Map<String, Integer> totalRoomsByType) {
         this.totalRoomsByType = totalRoomsByType;
+        LOGGER.info("Total number of rooms per room type correctly persisted: " + totalRoomsByType);
     }
 }

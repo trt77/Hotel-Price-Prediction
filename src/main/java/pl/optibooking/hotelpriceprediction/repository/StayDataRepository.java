@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface StayDataRepository extends JpaRepository<StayData, Long> {
     List<StayData> findAll();
+    List<StayData> findByRoomType(String roomType);
 }

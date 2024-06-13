@@ -21,7 +21,7 @@
                         let inputDiv = document.createElement("div");
                         inputDiv.classList.add("room-input");
                         inputDiv.innerHTML = `<label for="totalRooms${type}">Total Rooms for ${type}:</label>
-                                              <input type="number" id="totalRooms${type}" name="${type}" required>`;
+                                          <input type="number" id="totalRooms${type}" name="${type}" required>`;
                         roomInputs.appendChild(inputDiv);
                     });
                     document.getElementById("roomTypeMessage").innerText = "Room types successfully retrieved, please make your selection.";
@@ -74,9 +74,17 @@
 
         function setTotalRooms() {
             let formData = new FormData(document.getElementById("totalRoomsForm"));
+            let totalRoomsByType = {};
+            formData.forEach((value, key) => {
+                totalRoomsByType[key] = value;
+            });
+
             fetch('/setTotalRooms', {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(totalRoomsByType)
             }).then(response => response.text())
                 .then(data => {
                     document.getElementById("totalRoomsMessage").innerText = data;
@@ -180,7 +188,7 @@
     <select id="roomType" name="roomType" required></select>
     <label for="persons">Persons:</label>
     <input type="number" id="persons" name="persons" required>
-    <label for="occupancyRate">Occupancy Rate:</label>
+    <label for="occupancyRate">Occupancy Rate (%):</label>
     <input type="number" step="0.01" id="occupancyRate" name="occupancyRate" required>
     <button type="submit">Predict</button>
 </form>

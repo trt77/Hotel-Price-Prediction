@@ -69,19 +69,19 @@ public class PredictionController {
 
     @PostMapping("/setTotalRooms")
     @ResponseBody
-    public CompletableFuture<String> setTotalRooms(@RequestParam Map<String, String> totalRoomsByType) {
+    public CompletableFuture<String> setTotalRooms(@RequestBody Map<String, Integer> totalRoomsByType) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                Map<String, Integer> totalRooms = totalRoomsByType.entrySet().stream()
-                        .collect(Collectors.toMap(Map.Entry::getKey, entry -> Integer.parseInt(entry.getValue())));
-                predictionService.setTotalRoomsByType(totalRooms);
+                predictionService.setTotalRoomsByType(totalRoomsByType);
+                LOGGER.info("Total number of rooms per room type correctly persisted: " + totalRoomsByType);
                 return "Total rooms set successfully.";
-            } catch (NumberFormatException e) {
-                LOGGER.log(Level.SEVERE, "Error parsing total rooms", e);
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Error setting total rooms", e);
                 return "An error occurred while setting total rooms.";
             }
         });
     }
+
 
     private volatile boolean isPredicting = false;
 
@@ -92,6 +92,7 @@ public class PredictionController {
                                                         @RequestParam("roomType") String roomType,
                                                         @RequestParam("persons") int persons,
                                                         @RequestParam("occupancyRate") double occupancyRate) {
+        LOGGER.info("Expected occupancy has been set to: " + occupancyRate + "%");
         isPredicting = true;
         return CompletableFuture.supplyAsync(() -> {
             try {
